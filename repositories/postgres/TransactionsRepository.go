@@ -4,6 +4,7 @@ import (
 	"avito-user-balance/models"
 	"database/sql"
 	"fmt"
+
 	_ "github.com/lib/pq"
 )
 
@@ -15,12 +16,17 @@ func NewTransactionsRepository(d *sql.DB) *TransactionsRepository {
 	return &(TransactionsRepository{d})
 }
 
-func (tr *TransactionsRepository)FindTransactionByID(id int) (*models.Transaction, error) {
+func (tr *TransactionsRepository) FindLastTransactionByOrder(id int) (*models.Transaction, error) {
 	t := models.Transaction{}
-	fmt.Println("Looking for Transaction", id)
-	row := tr.db.QueryRow("SELECT * FROM transactions WHERE id=$1;", id)
+
+	queryString := ("SELECT * FROM transactions " + 
+	"WHERE order_id=$1 " +
+	"ORDER BY time_st DESC LIMIT 1;")
+
+	row := tr.db.QueryRow(queryString, id)
 	err := row.Scan(&t.ID, &t.OrderId, &t.UserId, &t.ServiceId,
-		&t.Value, &t.Timesp, &t.Note)
+		&t.Value, &t.Timesp, &t.Note, &t.Status)
+
 	switch err {
 	case sql.ErrNoRows:
 		return nil, fmt.Errorf("No Transaction with ID %d found", id) // 404 Not found with err struct
@@ -31,7 +37,7 @@ func (tr *TransactionsRepository)FindTransactionByID(id int) (*models.Transactio
 	}
 }
 
-func (tr *TransactionsRepository)FindAllTransactions() (models.Transactions, error) {
+func (tr *TransactionsRepository) FindAllTransactions() (models.Transactions, error) {
 	var trs models.Transactions
 
 	rows, err := tr.db.Query("SELECT * FROM transactions;")
@@ -42,7 +48,7 @@ func (tr *TransactionsRepository)FindAllTransactions() (models.Transactions, err
 	for rows.Next() {
 		var t = models.Transaction{}
 		err := rows.Scan(&t.ID, &t.OrderId, &t.UserId, &t.ServiceId,
-			&t.Value, &t.Timesp, &t.Note)
+			&t.Value, &t.Timesp, &t.Note, &t.Status)
 		if err != nil {
 			return nil, err
 		}
@@ -51,14 +57,14 @@ func (tr *TransactionsRepository)FindAllTransactions() (models.Transactions, err
 	return trs, nil
 }
 
-func (tr *TransactionsRepository)AddTransaction(t *models.Transaction) error {
+func (tr *TransactionsRepository) AddTransaction(t *models.Transaction) error {
 	queryStr := ("INSERT INTO transactions " +
-		"(order_id, user_id, service_id, cost, time_st, note) " +
-		"VALUES ($1, $2, $3, $4, $5, $6);")
+		"(order_id, user_id, service_id, cost, time_st, note, status) " +
+		"VALUES ($1, $2, $3, $4, $5, $6, $7);")
 	fmt.Println("QUERY STRING:")
 	fmt.Println(queryStr)
 
 	_, err := tr.db.Exec(queryStr,
-		t.OrderId, t.UserId, t.ServiceId, t.Value, t.Timesp, t.Note)
+		t.OrderId, t.UserId, t.ServiceId, t.Value, t.Timesp, t.Note, t.Status)
 	return err
 }

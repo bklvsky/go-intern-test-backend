@@ -13,7 +13,8 @@ CREATE TABLE transactions
     service_id INT,
     cost DECIMAL (18,2),
     time_st TIMESTAMP,
-    note VARCHAR(255)
+    note VARCHAR(255),
+    status VARCHAR(16)
 );
 
 INSERT INTO users VALUES (1, 100.0, 0);

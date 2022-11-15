@@ -4,8 +4,11 @@ import (
 	"avito-user-balance/models"
 	"avito-user-balance/repositories/postgres"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+
+	// "regexp"
 	"strconv"
 	"time"
 
@@ -36,7 +39,7 @@ func (ha *AppHandler) PostTransaction(rw http.ResponseWriter, rq *http.Request) 
 
 	newTr := rq.Context().Value(KeyTransactionPost{}).(*models.Transaction)
 	usrUpd := &models.User{newTr.UserId, newTr.Value, newTr.ReserveValue}
-	
+
 	err := ha.hu.updateUserData(usrUpd)
 	if err == nil {
 		err = ha.tr.AddTransaction(newTr)
@@ -87,7 +90,7 @@ func (ha *AppHandler) GetTransaction(rw http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
-	tr, error := ha.tr.FindTransactionByID(id)
+	tr, error := ha.tr.FindLastTransactionByOrder(id)
 	if tr == nil {
 		ha.l.Println(error.Error())
 		http.Error(rw, error.Error(), http.StatusNotFound)
@@ -128,9 +131,20 @@ func (ha *AppHandler) ValidateUser(tr *models.Transaction, err *error) {
 		return
 	}
 	// validate User's balance and reserve values for the transaction
-	userUpd := &models.User {userDB.ID, tr.Value, tr.ReserveValue}
-	fmt.Println("USER UPDATE =", userUpd)
+	userUpd := &models.User{userDB.ID, tr.Value, tr.ReserveValue}
 	ha.hu.ValidateUserData(userUpd, userDB, err)
+}
+
+func (ha *AppHandler) ValidateTransactionJSON(tr *models.Transaction, err *error) {
+	if *err != nil {
+		return
+	}
+	if tr.OrderId <= 0 || tr.ServiceId <= 0 {
+		*err = errors.New("Bad Order JSON")
+	} else if tr.Status != "" && tr.Status != "in process" &&
+		tr.Status != "approved" && tr.Status != "canceled" {
+		*err = errors.New(`Bad order status`)
+	}
 }
 
 type KeyTransactionPost struct{}
@@ -139,6 +153,37 @@ func (ha *AppHandler) MiddlewareAdditional(next http.Handler) http.Handler {
 
 	ha.l.Println("In ADDITIONAL MIDDLEWARE")
 	return ha.MiddlewareValidateNewTransaction(next)
+}
+
+func (ha *AppHandler) ValidateTransactionStatus(tr *models.Transaction, err *error) {
+	status := tr.Status
+	trDB, _ := ha.tr.FindLastTransactionByOrder(tr.OrderId)
+
+	switch status {
+	case "", "in process" :
+		if trDB != nil {
+			*err = errors.New("Order already exists. State its new status")
+		}
+	case "approved", "canceled":
+		if (trDB == nil){
+			*err = errors.New("Order doesn't exist. It can't be created with 'approved' or 'canceled' status.")
+		} else if (trDB.Status == "canceled" || trDB.Status == "approved") {
+			*err = errors.New("Order is finished and can't be modified")
+		}
+	}
+}
+
+func (ha *AppHandler) PrepareTransactionValue(tr *models.Transaction) {
+	switch tr.Status {
+	case "", "in process":
+		tr.ReserveValue = tr.Value
+		tr.Value *= -1
+	case "approved":
+		tr.ReserveValue = tr.Value * -1
+		tr.Value = 0
+	case "canceled":
+		tr.ReserveValue = tr.Value * -1
+	}
 }
 
 func (ha *AppHandler) MiddlewareValidateNewTransaction(next http.Handler) http.Handler {
@@ -156,10 +201,10 @@ func (ha *AppHandler) MiddlewareValidateNewTransaction(next http.Handler) http.H
 		}
 		tr.Timesp = time.Now()
 
-		// How transaction changes User's balance
-		tr.ReserveValue = tr.Value
-		tr.Value *= -1
-
+		ha.ValidateTransactionStatus(tr, &err)
+		ha.ValidateTransactionJSON(tr, &err)
+		//set how it changes the user's balance according to order status
+		ha.PrepareTransactionValue(tr)
 		ha.ValidateUser(tr, &err)
 		if err != nil {
 			ha.l.Println("Error:", err.Error())

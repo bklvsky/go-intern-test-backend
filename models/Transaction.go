@@ -10,10 +10,9 @@ type Transaction struct {
 	Value float32 `json:"value"`
 	ReserveValue float32 `json:"-"`
 	Timesp time.Time `json:"time"`
+	Status string `json:"status"`
 	Note string `json:"note"`
 }
-
-
 
 type Transactions []*Transaction
 

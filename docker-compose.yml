@@ -1,0 +1,55 @@
+version: '3.1'
+services:
+
+  # fullstack-postgres:
+  #   image: postgres:latest
+  #   container_name: full_POSTGRES_postgres
+    
+  #   ports:
+  #     - '5432:5432'
+  #   volumes:
+  #     - database_postgres:/var/lib/postgresql/data
+
+
+
+  postgres:
+    # restart: always
+    image: postgres:latest
+    container_name: postgres
+
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}  
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_NAME}
+      - POSTGRES_HOST=${POSTGRES_HOST} 
+    volumes:
+      - ./resources/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - '5432:5432'
+    networks:
+      - mynet
+      
+    
+  golang:
+    container_name: golang
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}  
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_NAME}
+      - POSTGRES_HOST=${POSTGRES_HOST} 
+    restart: always
+
+    command: ./avito-app
+    ports:
+      - '8080:8080'
+    links:
+      - postgres
+    networks:
+      - mynet
+
+networks:
+  mynet:
+    driver: bridge

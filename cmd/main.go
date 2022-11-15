@@ -14,43 +14,42 @@ import (
 	"time"
 )
 
-// // Setting up Router with Gorilla framework
-// type App struct {
-// 	MX *muxRouter
-// 	DB *sql.DB
-// }
+func setupRouter() *mux.Router {
+	db := postgres.InitDB()
+	l := log.New(os.Stdout, "", log.LstdFlags)
 
-// func (app App) Initialize() {
-// 	if err := godotenv.Load("./.env"); err != nil {
-// 		log.Fatalf("error loading env variables :%s", err.Error())
-// 	}
-
-// 	// for debug
-// 	fmt.Println("POSTGRES_DB", os.Getenv("POSTGRES_DB"))
-// 	fmt.Println("POSTGRES_PORT", os.Getenv("POSTGRES_PORT"))
-// 	fmt.Println("POSTGRES_USERNAME", os.Getenv("POSTGRES_USERNAME"))
-// 	fmt.Println("POSTGRES_PASSWORD", os.Getenv("POSTGRES_PASSWORD"))
-// 	fmt.Println("POSTGRES_HOST", os.Getenv("POSTGRES_HOST"))
-// 	//for debug
-
-// 	handlerUser := handlers.NewUserHandler(l)
-// 	app.MX = setupRouter(handlerUser)
-// }
-
-func setupRouter(handlerUser *handlers.UserHandler) *mux.Router {
 	mx := mux.NewRouter()
+	
+	handlerUser := handlers.NewUserHandler(l, db)
+	setupRouterUsers(handlerUser, mx)
 
-	getRouter := mx.Methods(http.MethodGet).Subrouter()
-	getRouter.HandleFunc("/users{_dummy:/?$}", handlerUser.GetUsers)
+	handlerApp := handlers.NewAppHandler(l, handlerUser, db)
+	setupRouterApp(handlerApp, mx)
+	return mx
+}
+
+func setupRouterApp(handlerApp *handlers.AppHandler, mx *mux.Router) {
+	getTrRouter := mx.Methods(http.MethodGet).Subrouter()
+	getTrRouter.HandleFunc("/orders/{id:[0-9]+}", handlerApp.GetTransaction)
+	getTrRouter.HandleFunc("/orders{_dummy:/?$}", handlerApp.GetTransactions)
+
+	
+	postTrRouter := mx.Methods(http.MethodPost).Subrouter()
+	postTrRouter.HandleFunc("/orders{_dummy:/?$}", handlerApp.PostTransaction)
+	postTrRouter.Use(handlerApp.MiddlewareAdditional)
+}
+
+func setupRouterUsers(handlerUser *handlers.UserHandler, mx *mux.Router) {
+
+	getUserRouter := mx.Methods(http.MethodGet).Subrouter()
+	getUserRouter.HandleFunc("/users{_dummy:/?$}", handlerUser.GetUsers)
 	// later
 	// getRouter.Use(handlerUser.MiddlewareValidateUser)
-	getRouter.HandleFunc("/users/{id:[0-9]+}", handlerUser.GetUsers)
+	getUserRouter.HandleFunc("/users/{id:[0-9]+}", handlerUser.GetUser)
 
-	postRouter := mx.Methods(http.MethodPost).Subrouter()
-	postRouter.HandleFunc("/users{_dummy:/?$}", handlerUser.PostUsers)
-	postRouter.Use(handlerUser.MiddlewareValidateUser)
-
-	return mx
+	postUserRouter := mx.Methods(http.MethodPost).Subrouter()
+	postUserRouter.HandleFunc("/users{_dummy:/?$}", handlerUser.PostUsers)
+	postUserRouter.Use(handlerUser.MiddlewareValidateUser)
 }
 
 // Setting up http Server
@@ -73,22 +72,9 @@ func setupServer(mx *mux.Router) http.Server {
 func main() {
 	if err := godotenv.Load("./.env"); err != nil {
 		log.Fatalf("error loading env variables :%s", err.Error())
-	}
-
-	//for debug
-	fmt.Println("POSTGRES_NAME", os.Getenv("POSTGRES_NAME"))
-	fmt.Println("POSTGRES_PORT", os.Getenv("POSTGRES_PORT"))
-	fmt.Println("POSTGRES_USER", os.Getenv("POSTGRES_USER"))
-	fmt.Println("POSTGRES_PASSWORD", os.Getenv("POSTGRES_PASSWORD"))
-	fmt.Println("POSTGRES_HOST", os.Getenv("POSTGRES_HOST"))
-	//for debug
+	}	
 	
-	db := postgres.InitDB()
-	l := log.New(os.Stdout, "", log.LstdFlags)
-
-	handlerUser := handlers.NewUserHandler(l, db)
-
-	mx := setupRouter(handlerUser)
+	mx := setupRouter()
 	server := setupServer(mx)
 
 	go func() {
@@ -100,14 +86,6 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-
-	const (
-		host     = "localhost" // replace to IP address/domain
-		port     = 5432
-		user     = "postgres" // replace with username
-		password = "password" // replace with password
-		dbname   = "postgres" // replace with the database name
-	)
 
 	ch := make(chan os.Signal, 1)
 

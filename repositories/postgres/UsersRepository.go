@@ -5,7 +5,6 @@ import (
 	"avito-user-balance/models"
 	"database/sql"
 	"fmt"
-
 	_ "github.com/lib/pq"
 )
 
@@ -74,7 +73,7 @@ func (ur *UserRepository)UpdateUser(newValue *models.User) error {
 	// var queryString string
 	// fmt.Sprintf()
 	_, err := ur.db.Exec(
-		"UPDATE users SET balance= balance + $1 WHERE id=$2;",
-		newValue.Balance, newValue.ID)
+		"UPDATE users SET (balance, reserve) = ($1, $2) WHERE id=$3;",
+		newValue.Balance, newValue.Reserve, newValue.ID)
 	return err
 }

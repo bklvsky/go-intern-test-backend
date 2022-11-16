@@ -16,6 +16,3 @@ CREATE TABLE transactions
     note VARCHAR(255),
     status VARCHAR(16)
 );
-
-INSERT INTO users VALUES (1, 100.0, 0);
-INSERT INTO users VALUES (2, 20.5, 20);

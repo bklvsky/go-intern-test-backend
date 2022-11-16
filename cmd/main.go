@@ -14,6 +14,7 @@ import (
 	"time"
 )
 
+// setup all routes
 func setupRouter() *mux.Router {
 	db := postgres.InitDB()
 	l := log.New(os.Stdout, "", log.LstdFlags)
@@ -38,7 +39,7 @@ func setupRouterApp(handlerApp *handlers.AppHandler, mx *mux.Router) {
 	postTrRouter.Use(handlerApp.MiddlewareValidateNewTransaction)
 
 	transferRouter := mx.Methods(http.MethodPost).Subrouter()
-	transferRouter.HandleFunc("/users/transfer{_dummy:/?$}", handlerApp.PostTransfer)
+	transferRouter.HandleFunc("/transfer{_dummy:/?$}", handlerApp.PostTransfer)
 	transferRouter.Use(handlerApp.MiddleWareValidateTransfer)
 
 	getHistoryRouter := mx.Methods(http.MethodGet).Subrouter()
@@ -49,8 +50,6 @@ func setupRouterUsers(handlerUser *handlers.UserHandler, mx *mux.Router) {
 
 	getUserRouter := mx.Methods(http.MethodGet).Subrouter()
 	getUserRouter.HandleFunc("/users{_dummy:/?$}", handlerUser.GetUsers)
-	// later
-	// getRouter.Use(handlerUser.MiddlewareValidateUser)
 	getUserRouter.HandleFunc("/users/{id:[0-9]+}", handlerUser.GetUser)
 
 	postUserRouter := mx.Methods(http.MethodPost).Subrouter()

@@ -195,7 +195,6 @@ func (ha *AppHandler) PrepareTransactionValue(tr *models.Transaction) {
 
 func (ha *AppHandler) MiddlewareValidateNewTransaction(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, rq *http.Request) {
-		ha.l.Println("In TRANSACTION MIDDLEWARE")
 		var tr = &models.Transaction{}
 		err := transactionFromJSON(tr, rq.Body)
 

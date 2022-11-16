@@ -8,7 +8,7 @@ import (
 type User struct {
 	ID      int     `json:"id"`
 	Balance float32 `json:"balance"`
-	Reserve float32 `json:"reserve"`
+	Reserve float32 `json:"-"`
 }
 
 type Users []*User

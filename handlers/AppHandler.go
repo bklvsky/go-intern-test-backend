@@ -151,12 +151,14 @@ func transactionFromJSON(tr *models.Transaction, rd io.Reader) error {
 	return decoder.Decode(tr)
 }
 
-func transactionsToJSON(trs models.Transactions, wr io.Writer) error {
+func transactionsToJSON(trs models.Transactions, wr http.ResponseWriter) error {
+	wr.Header().Set("Content-type", "application/json")
 	encoder := json.NewEncoder(wr)
 	return encoder.Encode(trs)
 }
 
 func transactionToJSON(tr models.Transaction, wr http.ResponseWriter) error {
+	wr.Header().Set("Content-type", "application/json")
 	encoder := json.NewEncoder(wr)
 	return encoder.Encode(tr)
 }

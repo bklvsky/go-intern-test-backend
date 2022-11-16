@@ -18,6 +18,7 @@ func NewErrorHandler(code int, err error, description string) *ErrorHandler {
 }
 
 func (he *ErrorHandler) Encode(rw http.ResponseWriter) {
+	rw.Header().Set("Content-type", "application/json")
 	rw.WriteHeader(he.Code)
 	encoder := json.NewEncoder(rw)
 	encoder.Encode(he)

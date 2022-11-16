@@ -28,6 +28,7 @@ func NewUserHandler(lg *log.Logger, d *sql.DB) *UserHandler {
 }
 
 func userToJSON(user models.User, wr http.ResponseWriter) error {
+	wr.Header().Set("Content-type", "application/json")
 	encoder := json.NewEncoder(wr)
 	return encoder.Encode(user)
 }
@@ -37,7 +38,8 @@ func userFromJSON(user *models.User, rd io.Reader) error {
 	return (decoder.Decode(user))
 }
 
-func usersToJSON(users models.Users, wr io.Writer) error {
+func usersToJSON(users models.Users, wr http.ResponseWriter) error {
+	wr.Header().Set("Content-type", "application/json")
 	encoder := json.NewEncoder(wr)
 	return encoder.Encode(users)
 }

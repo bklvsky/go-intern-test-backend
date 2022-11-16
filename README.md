@@ -23,33 +23,39 @@
 ## Структура проекта
 ```
 .
-├──── Dockerfile  
-├──── README.md  
-├──── docker-compose.yml  
-├──── go.mod  
-├──── go.sum  
-├──── cmd  
-│     └──── main.go   -- точка входа в программу  
-├──── db  
-│     └──── postgres  
-│           └──── initDB.go   -- подключение к БД  
-├──── handlers   -- функционал для работы с RestApi  
-│     ├──── AppHandler.go  
-│     ├──── ErrorHandler.go  
-│     └──── UserHandler.go  
-├──── models   -- структуры предметной области проекта  
-│     ├──── Transaction.go  
-│     └──── User.go  
 │
-├──── repositories   -- функционал для работы с БД  
-│     └──── postgres  
-│           ├──── TransactionsRepository.go  
-│           └──── UsersRepository.go  
-├──── resources  
-│     └──── sql  
-│           └──── init.sql   -- инициализация БД  
-└──── validate   -- валидация json  
-      └──── Validate.go  
+├──── Dockerfile
+├──── README.md
+├──── docker-compose.yml
+├──── go.mod
+├──── go.sum
+│
+├──── resources
+│     └──── sql   -- инициализация БД
+│           └──── init.sql
+├──── cmd
+│     └──── main.go   -- точка входа в программу
+│
+├──── db
+│     └──── postgres
+│         └──── initDB.go   -- подключение к БД
+│
+├──── handlers   -- функционал для работы с RestApi
+│     ├──── appHandler.go
+│     ├──── errorHandler.go
+│     ├──── middleWare.go
+│     └──── userHandler.go
+│
+├──── models    -- структуры предметной области проекта
+│     └──── models.go
+│   
+├──── repositories   -- функционал для работы с БД
+│     └──── postgres
+│           ├──── transactionsRepository.go
+│           └──── usersRepository.go
+│
+└──── validate   -- валидация json
+      └──── validate.go
 ```
 
 ## Примеры запросов

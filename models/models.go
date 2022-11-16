@@ -1,6 +1,20 @@
 package models
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+var ErrUserNotFound = fmt.Errorf("User not found")
+var ErrNotEnoughCredit = fmt.Errorf("Not enough money in the account")
+
+type User struct {
+	ID      int     `json:"id"`
+	Balance float32 `json:"balance"`
+	Reserve float32 `json:"-"`
+}
+
+type Users []*User
 
 type Transaction struct {
 	ID           int       `json:"-"`
@@ -27,7 +41,7 @@ type History struct {
 }
 
 type HistoryRequest struct {
-	UserId int `json:"userId"`
-	Page int `json:"page"`
-	Sort string `json:"sort"`
+	UserId int    `json:"userId"`
+	Page   int    `json:"page"`
+	Sort   string `json:"sort"`
 }

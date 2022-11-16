@@ -43,7 +43,8 @@ func setupRouterApp(handlerApp *handlers.AppHandler, mx *mux.Router) {
 	transferRouter.Use(handlerApp.MiddleWareValidateTransfer)
 
 	getHistoryRouter := mx.Methods(http.MethodGet).Subrouter()
-	getHistoryRouter.HandleFunc("/users/{id:[0-9]+}/history{_dummy:/?$}", handlerApp.GetHistory)
+	getHistoryRouter.HandleFunc("/history{_dummy:/?$}", handlerApp.GetHistory)
+	getHistoryRouter.Use(handlerApp.MiddleWareHistory)
 }
 
 func setupRouterUsers(handlerUser *handlers.UserHandler, mx *mux.Router) {

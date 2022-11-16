@@ -6,6 +6,22 @@ import (
 	"fmt"
 )
 
+func ValidateHistoryRequest(hr *models.HistoryRequest, err *error) {
+	if *err != nil {
+		return
+	}
+	if hr.Page <= 0 {
+		*err = fmt.Errorf(
+			"Bad page index[%d] (should be positive number)",
+			hr.Page)
+	} else if hr.Sort != "by_value" && hr.Sort != "by_date" {
+		*err = errors.New(
+			"Invalid history sort option : [" +
+				hr.Sort +
+				"]. Valid options: [by_size/by_date]")
+	}
+}
+
 func ValidateUserID(id int, err *error) {
 	if *err == nil {
 		if id <= 0 {

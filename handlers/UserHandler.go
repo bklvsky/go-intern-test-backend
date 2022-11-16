@@ -45,13 +45,6 @@ func usersToJSON(users models.Users, wr http.ResponseWriter) error {
 }
 
 func (hu *UserHandler) GetUsers(rw http.ResponseWriter, rq *http.Request) {
-	hu.l.Println("GET/", rq.URL.Path)
-	// vars := mux.Vars(rq)
-
-	// if _, ok := vars["id"]; ok {
-	// 	hu.l.Println("Looking for models.USER IN DB")
-	// 	hu.getUser(rw, rq)
-	// } else {
 	users, err := hu.ur.FindAllUsers()
 	if err != nil {
 		SendError(http.StatusNotFound, err, rw)

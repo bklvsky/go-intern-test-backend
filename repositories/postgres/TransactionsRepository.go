@@ -37,13 +37,14 @@ func (tr *TransactionsRepository) FindLastTransactionByOrder(id int) (*models.Tr
 	}
 }
 
-func (tr *TransactionsRepository) FindLastUsersTransaction(id int) (models.Transactions, error) {
+func (tr *TransactionsRepository) FindUsersTransaction(id int, page int, sort string) (models.Transactions, error) {
 	var trs models.Transactions
 	queryString := ("SELECT * FROM transactions " +
-		"WHERE user_id=$1 " +
-		"ORDER BY time_st DESC LIMIT 15;")
-	
-	rows, err := tr.db.Query(queryString, id)
+		"WHERE user_id=$1 AND cost != 0 " +
+		"ORDER BY " + sort + " DESC " +
+		"OFFSET $2 LIMIT 10;")
+
+	rows, err := tr.db.Query(queryString, id, (page-1)*10)
 	if err != nil {
 		return nil, err
 	}
@@ -53,13 +54,14 @@ func (tr *TransactionsRepository) FindLastUsersTransaction(id int) (models.Trans
 		var t = models.Transaction{}
 		err = rows.Scan(&t.ID, &t.OrderId, &t.UserId, &t.ServiceId,
 			&t.Value, &t.Timesp, &t.Note, &t.Status)
-			if err != nil {
-				return nil, err
-			}
-			trs = append(trs, &t)
-	}
-	if (len(trs) == 0) {
-		return nil, fmt.Errorf("No transactions for User %d yet.", id)
+		if err != nil {
+			return nil, err
+		}
+		if t.Status == "canceled" {
+			t.Note = fmt.Sprint("Order ", t.OrderId, " canceled")
+		}
+		t.Status = ""
+		trs = append(trs, &t)
 	}
 	return trs, nil
 }
@@ -81,7 +83,7 @@ func (tr *TransactionsRepository) FindAllTransactions() (models.Transactions, er
 		}
 		trs = append(trs, &t)
 	}
-	if (len(trs) == 0) {
+	if len(trs) == 0 {
 		return nil, fmt.Errorf("No transactions yet.")
 	}
 	return trs, nil

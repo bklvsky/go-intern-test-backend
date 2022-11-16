@@ -21,3 +21,13 @@ type Transfer struct {
 	Recipient int     `json:"recipient"`
 	Value     float32 `json:"value"`
 }
+
+type History struct {
+	History Transactions `json:"history"`
+}
+
+type HistoryRequest struct {
+	UserId int `json:"userId"`
+	Page int `json:"page"`
+	Sort string `json:"sort"`
+}

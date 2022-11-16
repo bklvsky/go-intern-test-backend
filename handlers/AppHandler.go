@@ -90,26 +90,27 @@ func (ha *AppHandler) GetTransactions(rw http.ResponseWriter, rq *http.Request) 
 }
 
 func (ha *AppHandler) GetHistory(rw http.ResponseWriter, rq *http.Request) {
-	// validate user
-	// get all transactions by user sorted with time (last 15)
-	vars := mux.Vars(rq)
-	id, err := strconv.Atoi(vars["id"])
+	request := rq.Context().Value(KeyHistory{}).(*models.HistoryRequest)
+	history_page := &models.History{}
+	var err error
 
-	if err != nil {
-		SendError(http.StatusBadRequest,
-			errors.New("Invalid User Id. Couldn't get the history."),
-			rw)
-		return
+	var sort string
+	if request.Sort == "by_date" {
+		sort = "time_st"
+	} else {
+		sort = "ABS(cost)"
 	}
-
-	var trs models.Transactions
-	trs, err = ha.tr.FindLastUsersTransaction(id)
+	
+	history_page.History, err = ha.tr.FindUsersTransaction(
+		request.UserId,
+		request.Page,
+		sort)
 	if err != nil {
 		SendError(http.StatusNotFound, err, rw)
 		return
 	}
 
-	err = transactionsToJSON(trs, rw)
+	err = historyToJSON(history_page, rw)
 	if err != nil {
 		SendJSONError(err, "encoding Transactions", rw)
 		return
@@ -139,6 +140,17 @@ func (ha *AppHandler) GetTransaction(rw http.ResponseWriter, rq *http.Request) {
 		SendJSONError(err, "encoding Transfer", rw)
 		return
 	}
+}
+
+func historyFromJSON(hReq *models.HistoryRequest, rd io.Reader) error {
+	decoder := json.NewDecoder(rd)
+	return decoder.Decode(hReq)
+}
+
+func historyToJSON(h *models.History, wr http.ResponseWriter) error {
+	wr.Header().Set("Content-type", "application/json")
+	encoder := json.NewEncoder(wr)
+	return encoder.Encode(h)
 }
 
 func transferFromJSON(tf *models.Transfer, rd io.Reader) error {
@@ -251,6 +263,29 @@ func (ha *AppHandler) MiddleWareValidateTransfer(next http.Handler) http.Handler
 		}
 
 		ctx := context.WithValue(rq.Context(), KeyTransfer{}, tf)
+		rq = rq.WithContext(ctx)
+
+		next.ServeHTTP(rw, rq)
+	})
+}
+
+type KeyHistory struct{}
+
+func (ha *AppHandler) MiddleWareHistory(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, rq *http.Request) {
+		hReq := models.HistoryRequest{}
+		err := historyFromJSON(&hReq, rq.Body)
+		if err != nil {
+			SendJSONError(err, "parsing history request", rw)
+			return
+		}
+		validate.ValidateUserID(hReq.UserId, &err)
+		validate.ValidateHistoryRequest(&hReq, &err)
+		if err != nil {
+			SendError(http.StatusBadRequest, err, rw)
+			return
+		}
+		ctx := context.WithValue(rq.Context(), KeyHistory{}, &hReq)
 		rq = rq.WithContext(ctx)
 
 		next.ServeHTTP(rw, rq)

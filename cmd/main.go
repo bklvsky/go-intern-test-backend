@@ -1,12 +1,12 @@
 package main
 
 import (
-	"avito-user-balance/handlers"
 	"avito-user-balance/db/postgres"
-	"github.com/joho/godotenv"
+	"avito-user-balance/handlers"
 	"context"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	"log"
 	"net/http"
 	"os"
@@ -19,7 +19,7 @@ func setupRouter() *mux.Router {
 	l := log.New(os.Stdout, "", log.LstdFlags)
 
 	mx := mux.NewRouter()
-	
+
 	handlerUser := handlers.NewUserHandler(l, db)
 	setupRouterUsers(handlerUser, mx)
 
@@ -33,10 +33,9 @@ func setupRouterApp(handlerApp *handlers.AppHandler, mx *mux.Router) {
 	getTrRouter.HandleFunc("/orders/{id:[0-9]+}", handlerApp.GetTransaction)
 	getTrRouter.HandleFunc("/orders{_dummy:/?$}", handlerApp.GetTransactions)
 
-	
 	postTrRouter := mx.Methods(http.MethodPost).Subrouter()
 	postTrRouter.HandleFunc("/orders{_dummy:/?$}", handlerApp.PostTransaction)
-	postTrRouter.Use(handlerApp.MiddlewareAdditional)
+	postTrRouter.Use(handlerApp.MiddlewareValidateNewTransaction)
 
 	transferRouter := mx.Methods(http.MethodPost).Subrouter()
 	transferRouter.HandleFunc("/users/transfer{_dummy:/?$}", handlerApp.PostTransfer)
@@ -76,8 +75,8 @@ func setupServer(mx *mux.Router) http.Server {
 func main() {
 	if err := godotenv.Load("./.env"); err != nil {
 		log.Fatalf("error loading env variables :%s", err.Error())
-	}	
-	
+	}
+
 	mx := setupRouter()
 	server := setupServer(mx)
 

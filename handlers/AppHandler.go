@@ -3,11 +3,11 @@ package handlers
 import (
 	"avito-user-balance/models"
 	"avito-user-balance/repositories/postgres"
+	"avito-user-balance/validate"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -29,9 +29,6 @@ func NewAppHandler(lg *log.Logger, hu *UserHandler, d *sql.DB) *AppHandler {
 }
 
 func (ha *AppHandler) PostTransaction(rw http.ResponseWriter, rq *http.Request) {
-	ha.l.Println("Handle POST TRANSACTION")
-	ha.l.Println("POST", rq.URL.Path)
-
 	newTr := rq.Context().Value(KeyTransactionPost{}).(*models.Transaction)
 	usrUpd := &models.User{newTr.UserId, newTr.Value, newTr.ReserveValue}
 
@@ -40,14 +37,10 @@ func (ha *AppHandler) PostTransaction(rw http.ResponseWriter, rq *http.Request) 
 		err = ha.tr.AddTransaction(newTr)
 	}
 	if err != nil {
-		ha.l.Println("Error:", err.Error())
-		rw.WriteHeader(http.StatusInternalServerError)
-		enc := json.NewEncoder(rw)
-		enc.Encode(PostResponseJSON{false})
+		SendError(http.StatusInternalServerError, err, rw)
 		return
 	}
-	enc := json.NewEncoder(rw)
-	enc.Encode(PostResponseJSON{true})
+	SendSuccessful(rw)
 }
 
 func (ha *AppHandler) PostTransfer(rw http.ResponseWriter, rq *http.Request) {
@@ -64,17 +57,13 @@ func (ha *AppHandler) PostTransfer(rw http.ResponseWriter, rq *http.Request) {
 		}
 	}
 	if err != nil {
-		ha.l.Println("Error:", err.Error())
-		rw.WriteHeader(http.StatusInternalServerError)
-		enc := json.NewEncoder(rw)
-		enc.Encode(PostResponseJSON{false})
+		SendError(http.StatusInternalServerError, err, rw)
 		return
 	}
 	senderTr, recipTr := transactionsFromTransfer(tf)
 	err = ha.tr.AddTransaction(senderTr)
 	err = ha.tr.AddTransaction(recipTr)
-	enc := json.NewEncoder(rw)
-	enc.Encode(PostResponseJSON{true})
+	SendSuccessful(rw)
 }
 
 func transactionsFromTransfer(tf *models.Transfer) (*models.Transaction, *models.Transaction) {
@@ -86,25 +75,16 @@ func transactionsFromTransfer(tf *models.Transfer) (*models.Transaction, *models
 }
 
 func (ha *AppHandler) GetTransactions(rw http.ResponseWriter, rq *http.Request) {
-	ha.l.Println("GET/", rq.URL.Path)
-	// vars := mux.Vars(rq)
-
-	// if _, ok := vars["id"]; ok {
-	// 	ha.l.Println("Looking for models.USER IN DB")
-	// 	ha.getTransaction(rw, rq)
-	// } else {
 	trs, err := ha.tr.FindAllTransactions()
 	if err != nil {
-		ha.l.Println("Database error:", err)
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		SendError(http.StatusNotFound, err, rw)
 		return
 	}
 
 	err = transactionsToJSON(trs, rw)
 
 	if err != nil {
-		ha.l.Println("Error encoding json", err)
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		SendJSONError(err, "encoding Transactions", rw)
 		return
 	}
 	// }
@@ -115,22 +95,22 @@ func (ha *AppHandler) GetTransaction(rw http.ResponseWriter, rq *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 
 	if err != nil {
-		ha.l.Println("URL error, invalid models.userID")
-		http.Error(rw, "Invalid Request", http.StatusBadRequest)
+		SendError(http.StatusBadRequest,
+			errors.New("Invalid Transaction Id"),
+			rw)
 		return
 	}
 
-	tr, error := ha.tr.FindLastTransactionByOrder(id)
+	var tr *models.Transaction
+	tr, err = ha.tr.FindLastTransactionByOrder(id)
 	if tr == nil {
-		ha.l.Println(error.Error())
-		http.Error(rw, error.Error(), http.StatusNotFound)
+		SendError(http.StatusNotFound, err, rw)
 		return
 	}
 
 	err = transactionToJSON(*tr, rw)
 	if err != nil {
-		ha.l.Println("Error encoding json", err)
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		SendJSONError(err, "encoding Transfer", rw)
 		return
 	}
 }
@@ -160,64 +140,28 @@ func (ha *AppHandler) ValidateUser(tr *models.Transaction, err *error) {
 	if *err != nil {
 		return
 	}
-	ha.hu.ValidateUserID(tr.UserId, err)
-	userDB := ha.hu.ValidateUserInDb(tr.UserId, err)
+	validate.ValidateUserID(tr.UserId, err)
+	userDB := ha.hu.UserInDb(tr.UserId, err)
 	if *err != nil {
 		return
 	}
 	// validate User's balance and reserve values for the transaction
 	userUpd := &models.User{userDB.ID, tr.Value, tr.ReserveValue}
-	ha.hu.ValidateUserData(userUpd, userDB, err)
-}
-
-func (ha *AppHandler) ValidateTransactionJSON(tr *models.Transaction, err *error) {
-	if *err != nil {
-		return
-	}
-	if tr.OrderId <= 0 || tr.ServiceId <= 0 {
-		*err = errors.New("Bad Order JSON")
-	} else if tr.Status != "" && tr.Status != "in process" &&
-		tr.Status != "approved" && tr.Status != "canceled" {
-		*err = errors.New(`Bad order status`)
-	}
+	validate.ValidateUserData(userUpd, userDB, err)
 }
 
 type KeyTransactionPost struct{}
 
-func (ha *AppHandler) MiddlewareAdditional(next http.Handler) http.Handler {
-
-	ha.l.Println("In ADDITIONAL MIDDLEWARE")
-	return ha.MiddlewareValidateNewTransaction(next)
-}
-
-func (ha *AppHandler) ValidateTransactionStatus(tr *models.Transaction, err *error) {
-	status := tr.Status
-	trDB, _ := ha.tr.FindLastTransactionByOrder(tr.OrderId)
-
-	switch status {
-	case "", "in process":
-		if trDB != nil {
-			*err = errors.New("Order already exists. State its new status")
-		}
-	case "approved", "canceled":
-		if trDB == nil {
-			*err = errors.New("Order doesn't exist. It can't be created with 'approved' or 'canceled' status.")
-		} else if trDB.Status == "canceled" || trDB.Status == "approved" {
-			*err = errors.New("Order is finished and can't be modified")
-		}
-	}
-}
-
 func (ha *AppHandler) PrepareTransactionValue(tr *models.Transaction) {
 	switch tr.Status {
-	case "", "in process":
-		tr.ReserveValue = tr.Value
-		tr.Value *= -1
-	case "approved":
-		tr.ReserveValue = tr.Value * -1
-		tr.Value = 0
-	case "canceled":
-		tr.ReserveValue = tr.Value * -1
+		case "", "in process":
+			tr.ReserveValue = tr.Value
+			tr.Value *= -1
+		case "approved":
+			tr.ReserveValue = tr.Value * -1
+			tr.Value = 0
+		case "canceled":
+			tr.ReserveValue = tr.Value * -1
 	}
 }
 
@@ -228,27 +172,21 @@ func (ha *AppHandler) MiddlewareValidateNewTransaction(next http.Handler) http.H
 		err := transactionFromJSON(tr, rq.Body)
 
 		if err != nil {
-			ha.l.Println("Error:", err.Error())
-			rw.WriteHeader(http.StatusInternalServerError)
-			enc := json.NewEncoder(rw)
-			enc.Encode(PostResponseJSON{false})
+			SendJSONError(err, "parsing order", rw)
 			return
 		}
 		tr.Timesp = time.Now()
 
-		ha.ValidateTransactionStatus(tr, &err)
-		ha.ValidateTransactionJSON(tr, &err)
-		//set how it changes the user's balance according to order status
+		trDB, _ := ha.tr.FindLastTransactionByOrder(tr.OrderId)
+		validate.ValidateTransactionStatus(tr, trDB, &err)
+		validate.ValidateTransactionJSON(tr, &err)
 		ha.PrepareTransactionValue(tr)
 		ha.ValidateUser(tr, &err)
+
 		if err != nil {
-			ha.l.Println("Error:", err.Error())
-			rw.WriteHeader(http.StatusBadRequest)
-			enc := json.NewEncoder(rw)
-			enc.Encode(PostResponseJSON{false})
+			SendError(http.StatusBadRequest, err, rw)
 			return
 		}
-		fmt.Println("USER VALIDATED")
 
 		ctx := context.WithValue(rq.Context(), KeyTransactionPost{}, tr)
 		rq = rq.WithContext(ctx)
@@ -258,15 +196,13 @@ func (ha *AppHandler) MiddlewareValidateNewTransaction(next http.Handler) http.H
 }
 
 func (ha *AppHandler) ValidateTransfer(tf *models.Transfer, err *error) {
-	// 1. both users exist
-	// sender has enough money for transcation
-	sender := ha.hu.ValidateUserInDb(tf.Sender, err)
-	_ = ha.hu.ValidateUserInDb(tf.Recipient, err)
+	sender := ha.hu.UserInDb(tf.Sender, err)
+	_ = ha.hu.UserInDb(tf.Recipient, err)
 	if *err != nil {
 		return
 	}
 	if sender.Balance < tf.Value {
-		*err = ErrNotEnoughCredit
+		*err = models.ErrNotEnoughCredit
 	}
 }
 
@@ -277,19 +213,13 @@ func (ha *AppHandler) MiddleWareValidateTransfer(next http.Handler) http.Handler
 		tf := &models.Transfer{}
 		err := transferFromJSON(tf, rq.Body)
 		if err != nil {
-			ha.l.Println("Error:", err.Error())
-			rw.WriteHeader(http.StatusInternalServerError)
-			enc := json.NewEncoder(rw)
-			enc.Encode(PostResponseJSON{false})
+			SendJSONError(err, "parsing Transfer", rw)
 			return
 		}
 
 		ha.ValidateTransfer(tf, &err)
 		if err != nil {
-			ha.l.Println(("Error:"), err.Error())
-			rw.WriteHeader((http.StatusBadRequest))
-			enc := json.NewEncoder(rw)
-			enc.Encode(PostResponseJSON{false})
+			SendError(http.StatusBadRequest, err, rw)
 			return
 		}
 

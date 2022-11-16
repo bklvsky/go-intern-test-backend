@@ -3,7 +3,6 @@ package models
 import (
 	// "log"
 	"fmt"
-	"io"
 )
 
 type User struct {
@@ -15,12 +14,4 @@ type User struct {
 type Users []*User
 
 var ErrUserNotFound = fmt.Errorf("User not found")
-
-type UserRepository interface {
-	ToJSON(wr io.Writer) error
-	FindUserByID(id int) (*User, error)
-	FindAllUsers() ([]*User, error)
-	UpdateUserBalance(newValue *User) error
-	AddUser(newValue *User) error
-	// PostUserBalance(id int, balance float32)
-}
+var ErrNotEnoughCredit = fmt.Errorf("Not enough money in the account")

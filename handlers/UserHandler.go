@@ -3,17 +3,14 @@ package handlers
 import (
 	"avito-user-balance/models"
 	"avito-user-balance/repositories/postgres"
+	"avito-user-balance/validate"
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
-
-	// "encoding/json"
 	"log"
 	"net/http"
-
-	// "regexp"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -55,16 +52,14 @@ func (hu *UserHandler) GetUsers(rw http.ResponseWriter, rq *http.Request) {
 	// } else {
 	users, err := hu.ur.FindAllUsers()
 	if err != nil {
-		hu.l.Println("Database error:", err)
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		SendError(http.StatusNotFound, err, rw)
 		return
 	}
 
 	err = usersToJSON(models.Users(users), rw)
 
 	if err != nil {
-		hu.l.Println("Error encoding json", err)
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		SendJSONError(err, "enconding users", rw)
 		return
 	}
 	// }
@@ -75,16 +70,14 @@ func (hu *UserHandler) GetUser(rw http.ResponseWriter, rq *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 
 	if err != nil {
-		hu.l.Println("URL error, invalid models.userID")
-		http.Error(rw, "Invalid Request", http.StatusBadRequest)
+		SendError(http.StatusBadRequest, errors.New("Invalid User ID"), rw)
 		return
 	}
 
-	// var models.userServ models.UserService
-	user, error := hu.ur.FindUserByID(id)
+	var user *models.User
+	user, err = hu.ur.FindUserByID(id)
 	if user == nil {
-		hu.l.Println(error.Error())
-		http.Error(rw, error.Error(), http.StatusNotFound)
+		SendError(http.StatusNotFound, err, rw)
 		return
 	}
 
@@ -96,15 +89,9 @@ func (hu *UserHandler) GetUser(rw http.ResponseWriter, rq *http.Request) {
 	}
 }
 
-var ErrNotEnoughCredit = fmt.Errorf("Not enough money in the account")
-
-type PostResponseJSON struct {
-	Status bool `json:"status"`
-}
-
 func (hu *UserHandler) updateUserData(userUpdate *models.User) error {
 	oldValue, err := hu.ur.FindUserByID(userUpdate.ID)
-	if (err != nil) {
+	if err != nil {
 		return err
 	}
 	userUpdate.Balance += oldValue.Balance
@@ -114,7 +101,6 @@ func (hu *UserHandler) updateUserData(userUpdate *models.User) error {
 }
 
 func (hu *UserHandler) PostUsers(rw http.ResponseWriter, rq *http.Request) {
-	hu.l.Println("Handle POST models.User")
 	var err error
 
 	userUpdate := rq.Context().Value((KeyUserUpdate{})).(*models.User)
@@ -126,29 +112,13 @@ func (hu *UserHandler) PostUsers(rw http.ResponseWriter, rq *http.Request) {
 		err = hu.updateUserData(userUpdate)
 	}
 	if err != nil {
-		hu.l.Println("Error:", err.Error())
-		rw.WriteHeader(http.StatusBadRequest)
-		enc := json.NewEncoder(rw)
-		enc.Encode(PostResponseJSON{false})
+		SendError(http.StatusBadRequest, err, rw)
 		return
 	}
-	enc := json.NewEncoder(rw)
-	enc.Encode(PostResponseJSON{true})
+	SendSuccessful(rw)
 }
 
-func (hu *UserHandler) ValidateUserData(userUpd *models.User, user *models.User, err *error) {
-	if *err == nil {
-		if user == nil {
-			user = &models.User{}
-		}
-		if ((user.Balance + userUpd.Balance) < 0 ||
-		(user.Reserve + userUpd.Reserve) < 0) {
-			*err = ErrNotEnoughCredit
-		}
-	}
-}
-
-func (hu *UserHandler) ValidateUserInDb(id int, err *error) *models.User {
+func (hu *UserHandler) UserInDb(id int, err *error) *models.User {
 	if *err == nil {
 		user, _ := hu.ur.FindUserByID(id)
 		if user == nil {
@@ -159,57 +129,31 @@ func (hu *UserHandler) ValidateUserInDb(id int, err *error) *models.User {
 	return nil
 }
 
-func (hu *UserHandler) ValidateUserID(id int, err *error) {
-	if *err == nil {
-		if id <= 0 {
-			*err = fmt.Errorf("Bad models.User ID")
-		}
-	}
-}
-
-// I NEED TO MAKE AN ERROR STRUCT IN REPO
-// IT WILL HAVE FIELDS:		MESSAGE (ERROR())
-//							STATUS
-//							DESCRIPTION (OPTIONAL)
-
-// func (hu *UserHandler) MiddleWareValidateUser(next http.Handler) http.Handler {
-// 	return http.HandlerFunc( func(rw http.ResponseWriter, rq *http.Request) {
-
-// 	})
-// }
-
 type KeyUserUpdate struct{}
 type KeyUserInDb struct{}
 
 func (hu *UserHandler) MiddlewareValidateUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, rq *http.Request) {
-		hu.l.Println("IN MIDDLEWARE")
 		var userJSON = &models.User{}
 		err := userFromJSON(userJSON, rq.Body)
 
 		if err != nil {
-			hu.l.Println("Error:", err.Error())
-			rw.WriteHeader(http.StatusInternalServerError)
-			enc := json.NewEncoder(rw)
-			enc.Encode(PostResponseJSON{false})
+			SendJSONError(err, "decoding user", rw)
 			return
 		}
 
-		hu.ValidateUserID(userJSON.ID, &err)
+		validate.ValidateUserID(userJSON.ID, &err)
 		var userInDb *models.User
 		userInDb, _ = hu.ur.FindUserByID(userJSON.ID)
-		hu.ValidateUserData(userJSON, userInDb, &err)
+		validate.ValidateUserData(userJSON, userInDb, &err)
 
 		if err != nil {
-			hu.l.Println("Error:", err.Error())
-			rw.WriteHeader(http.StatusBadRequest)
-			enc := json.NewEncoder(rw)
-			enc.Encode(PostResponseJSON{false})
+			SendError(http.StatusBadRequest, err, rw)
 			return
 		}
 
 		ctx := context.WithValue(context.WithValue(rq.Context(),
-		KeyUserUpdate{}, userJSON), KeyUserInDb{}, userInDb)
+			KeyUserUpdate{}, userJSON), KeyUserInDb{}, userInDb)
 		rq = rq.WithContext(ctx)
 
 		next.ServeHTTP(rw, rq)

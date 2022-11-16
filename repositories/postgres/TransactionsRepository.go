@@ -37,6 +37,33 @@ func (tr *TransactionsRepository) FindLastTransactionByOrder(id int) (*models.Tr
 	}
 }
 
+func (tr *TransactionsRepository) FindLastUsersTransaction(id int) (models.Transactions, error) {
+	var trs models.Transactions
+	queryString := ("SELECT * FROM transactions " +
+		"WHERE user_id=$1 " +
+		"ORDER BY time_st DESC LIMIT 15;")
+	
+	rows, err := tr.db.Query(queryString, id)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+		var t = models.Transaction{}
+		err = rows.Scan(&t.ID, &t.OrderId, &t.UserId, &t.ServiceId,
+			&t.Value, &t.Timesp, &t.Note, &t.Status)
+			if err != nil {
+				return nil, err
+			}
+			trs = append(trs, &t)
+	}
+	if (len(trs) == 0) {
+		return nil, fmt.Errorf("No transactions for User %d yet.", id)
+	}
+	return trs, nil
+}
+
 func (tr *TransactionsRepository) FindAllTransactions() (models.Transactions, error) {
 	var trs models.Transactions
 
@@ -53,6 +80,9 @@ func (tr *TransactionsRepository) FindAllTransactions() (models.Transactions, er
 			return nil, err
 		}
 		trs = append(trs, &t)
+	}
+	if (len(trs) == 0) {
+		return nil, fmt.Errorf("No transactions yet.")
 	}
 	return trs, nil
 }

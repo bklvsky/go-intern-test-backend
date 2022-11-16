@@ -87,7 +87,33 @@ func (ha *AppHandler) GetTransactions(rw http.ResponseWriter, rq *http.Request) 
 		SendJSONError(err, "encoding Transactions", rw)
 		return
 	}
-	// }
+}
+
+func (ha *AppHandler) GetHistory(rw http.ResponseWriter, rq *http.Request) {
+	// validate user
+	// get all transactions by user sorted with time (last 15)
+	vars := mux.Vars(rq)
+	id, err := strconv.Atoi(vars["id"])
+
+	if err != nil {
+		SendError(http.StatusBadRequest,
+			errors.New("Invalid User Id. Couldn't get the history."),
+			rw)
+		return
+	}
+
+	var trs models.Transactions
+	trs, err = ha.tr.FindLastUsersTransaction(id)
+	if err != nil {
+		SendError(http.StatusNotFound, err, rw)
+		return
+	}
+
+	err = transactionsToJSON(trs, rw)
+	if err != nil {
+		SendJSONError(err, "encoding Transactions", rw)
+		return
+	}
 }
 
 func (ha *AppHandler) GetTransaction(rw http.ResponseWriter, rq *http.Request) {
@@ -154,14 +180,14 @@ type KeyTransactionPost struct{}
 
 func (ha *AppHandler) PrepareTransactionValue(tr *models.Transaction) {
 	switch tr.Status {
-		case "", "in process":
-			tr.ReserveValue = tr.Value
-			tr.Value *= -1
-		case "approved":
-			tr.ReserveValue = tr.Value * -1
-			tr.Value = 0
-		case "canceled":
-			tr.ReserveValue = tr.Value * -1
+	case "", "in process":
+		tr.ReserveValue = tr.Value
+		tr.Value *= -1
+	case "approved":
+		tr.ReserveValue = tr.Value * -1
+		tr.Value = 0
+	case "canceled":
+		tr.ReserveValue = tr.Value * -1
 	}
 }
 

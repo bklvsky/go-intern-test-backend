@@ -62,7 +62,6 @@ func (hu *UserHandler) GetUsers(rw http.ResponseWriter, rq *http.Request) {
 		SendJSONError(err, "enconding users", rw)
 		return
 	}
-	// }
 }
 
 func (hu *UserHandler) GetUser(rw http.ResponseWriter, rq *http.Request) {
@@ -83,8 +82,7 @@ func (hu *UserHandler) GetUser(rw http.ResponseWriter, rq *http.Request) {
 
 	err = userToJSON(*user, rw)
 	if err != nil {
-		hu.l.Println("Error encoding json", err)
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		SendJSONError(err, "encoding user", rw)
 		return
 	}
 }

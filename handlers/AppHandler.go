@@ -4,20 +4,15 @@ import (
 	"avito-user-balance/models"
 	"avito-user-balance/repositories/postgres"
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-
-	// "regexp"
-	"strconv"
-	"time"
-
-	// "fmt"
-	"database/sql"
 	"log"
 	"net/http"
-
-	"encoding/json"
+	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -53,6 +48,41 @@ func (ha *AppHandler) PostTransaction(rw http.ResponseWriter, rq *http.Request) 
 	}
 	enc := json.NewEncoder(rw)
 	enc.Encode(PostResponseJSON{true})
+}
+
+func (ha *AppHandler) PostTransfer(rw http.ResponseWriter, rq *http.Request) {
+	tf := rq.Context().Value(KeyTransfer{}).(*models.Transfer)
+	senderChanges := &models.User{tf.Sender, -tf.Value, 0}
+	recipientChanges := &models.User{tf.Recipient, tf.Value, 0}
+
+	err := ha.hu.updateUserData(senderChanges)
+	if err == nil {
+		err = ha.hu.updateUserData(recipientChanges)
+		if err != nil {
+			senderChanges.Balance = recipientChanges.Balance
+			err = ha.hu.updateUserData(senderChanges)
+		}
+	}
+	if err != nil {
+		ha.l.Println("Error:", err.Error())
+		rw.WriteHeader(http.StatusInternalServerError)
+		enc := json.NewEncoder(rw)
+		enc.Encode(PostResponseJSON{false})
+		return
+	}
+	senderTr, recipTr := transactionsFromTransfer(tf)
+	err = ha.tr.AddTransaction(senderTr)
+	err = ha.tr.AddTransaction(recipTr)
+	enc := json.NewEncoder(rw)
+	enc.Encode(PostResponseJSON{true})
+}
+
+func transactionsFromTransfer(tf *models.Transfer) (*models.Transaction, *models.Transaction) {
+	senderTr := &models.Transaction{0, 0, tf.Sender, 0,
+		-tf.Value, 0, time.Now(), "approved", "Transfer to another user"}
+	recTr := &models.Transaction{0, 0, tf.Recipient, 0,
+		tf.Value, 0, time.Now(), "approved", "Transfer from another user"}
+	return senderTr, recTr
 }
 
 func (ha *AppHandler) GetTransactions(rw http.ResponseWriter, rq *http.Request) {
@@ -105,7 +135,12 @@ func (ha *AppHandler) GetTransaction(rw http.ResponseWriter, rq *http.Request) {
 	}
 }
 
-func transactionFromJson(tr *models.Transaction, rd io.Reader) error {
+func transferFromJSON(tf *models.Transfer, rd io.Reader) error {
+	decoder := json.NewDecoder(rd)
+	return decoder.Decode(tf)
+}
+
+func transactionFromJSON(tr *models.Transaction, rd io.Reader) error {
 	decoder := json.NewDecoder(rd)
 	return decoder.Decode(tr)
 }
@@ -160,14 +195,14 @@ func (ha *AppHandler) ValidateTransactionStatus(tr *models.Transaction, err *err
 	trDB, _ := ha.tr.FindLastTransactionByOrder(tr.OrderId)
 
 	switch status {
-	case "", "in process" :
+	case "", "in process":
 		if trDB != nil {
 			*err = errors.New("Order already exists. State its new status")
 		}
 	case "approved", "canceled":
-		if (trDB == nil){
+		if trDB == nil {
 			*err = errors.New("Order doesn't exist. It can't be created with 'approved' or 'canceled' status.")
-		} else if (trDB.Status == "canceled" || trDB.Status == "approved") {
+		} else if trDB.Status == "canceled" || trDB.Status == "approved" {
 			*err = errors.New("Order is finished and can't be modified")
 		}
 	}
@@ -190,7 +225,7 @@ func (ha *AppHandler) MiddlewareValidateNewTransaction(next http.Handler) http.H
 	return http.HandlerFunc(func(rw http.ResponseWriter, rq *http.Request) {
 		ha.l.Println("In TRANSACTION MIDDLEWARE")
 		var tr = &models.Transaction{}
-		err := transactionFromJson(tr, rq.Body)
+		err := transactionFromJSON(tr, rq.Body)
 
 		if err != nil {
 			ha.l.Println("Error:", err.Error())
@@ -216,6 +251,49 @@ func (ha *AppHandler) MiddlewareValidateNewTransaction(next http.Handler) http.H
 		fmt.Println("USER VALIDATED")
 
 		ctx := context.WithValue(rq.Context(), KeyTransactionPost{}, tr)
+		rq = rq.WithContext(ctx)
+
+		next.ServeHTTP(rw, rq)
+	})
+}
+
+func (ha *AppHandler) ValidateTransfer(tf *models.Transfer, err *error) {
+	// 1. both users exist
+	// sender has enough money for transcation
+	sender := ha.hu.ValidateUserInDb(tf.Sender, err)
+	_ = ha.hu.ValidateUserInDb(tf.Recipient, err)
+	if *err != nil {
+		return
+	}
+	if sender.Balance < tf.Value {
+		*err = ErrNotEnoughCredit
+	}
+}
+
+type KeyTransfer struct{}
+
+func (ha *AppHandler) MiddleWareValidateTransfer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, rq *http.Request) {
+		tf := &models.Transfer{}
+		err := transferFromJSON(tf, rq.Body)
+		if err != nil {
+			ha.l.Println("Error:", err.Error())
+			rw.WriteHeader(http.StatusInternalServerError)
+			enc := json.NewEncoder(rw)
+			enc.Encode(PostResponseJSON{false})
+			return
+		}
+
+		ha.ValidateTransfer(tf, &err)
+		if err != nil {
+			ha.l.Println(("Error:"), err.Error())
+			rw.WriteHeader((http.StatusBadRequest))
+			enc := json.NewEncoder(rw)
+			enc.Encode(PostResponseJSON{false})
+			return
+		}
+
+		ctx := context.WithValue(rq.Context(), KeyTransfer{}, tf)
 		rq = rq.WithContext(ctx)
 
 		next.ServeHTTP(rw, rq)

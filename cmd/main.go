@@ -37,6 +37,10 @@ func setupRouterApp(handlerApp *handlers.AppHandler, mx *mux.Router) {
 	postTrRouter := mx.Methods(http.MethodPost).Subrouter()
 	postTrRouter.HandleFunc("/orders{_dummy:/?$}", handlerApp.PostTransaction)
 	postTrRouter.Use(handlerApp.MiddlewareAdditional)
+
+	transferRouter := mx.Methods(http.MethodPost).Subrouter()
+	transferRouter.HandleFunc("/users/transfer{_dummy:/?$}", handlerApp.PostTransfer)
+	transferRouter.Use(handlerApp.MiddleWareValidateTransfer)
 }
 
 func setupRouterUsers(handlerUser *handlers.UserHandler, mx *mux.Router) {
